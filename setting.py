@@ -1,4 +1,4 @@
 # settings of lda training
 
-E_MAX_ITR=3
-E_CON_THRES=0.1
+E_MAX_ITR=300
+E_CON_THRES=1e-6
