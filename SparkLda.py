@@ -17,8 +17,6 @@ def Expectation(doc, beta, alpha, K):
     
      * K : number of topics
     
-     * NumDoc : total number of documents.
-     
      return : current doc + phi of current doc, for input of Maximization.
     '''
     
