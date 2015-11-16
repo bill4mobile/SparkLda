@@ -108,8 +108,8 @@ def rand_init_beta(NumTerm, K):
 
 if __name__=="__main__":
 
-    NumTerm, K, NumDoc = 7, 2, 4
-    Alpha = 5 / K
+    NumTerm, K = setting.NUM_TERM, setting.K
+    Alpha = setting.ALPHA
     beta = rand_init_beta(NumTerm,  K)
 
     # local test code start
@@ -143,7 +143,7 @@ if __name__=="__main__":
         output = new_beta.collect()
         #print >> open('beta.'+str(i), 'w'), beta
         (beta, likelihood) = update_beta(output, K, NumTerm)
-        print beta
+        #print beta
         print "likelihood {0} is {1}".format(i, likelihood)
-    
+    print >> open('beta.final', 'w'), beta
     
