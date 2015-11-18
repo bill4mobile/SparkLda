@@ -4,8 +4,9 @@ import math
 import setting
 from utils import *
 import random
-from operator import add
-from pyspark import SparkContext
+if len(sys.argv) > 2 and sys.argv[2] != "local" or len(sys.argv) <= 2:
+    from operator import add
+    from pyspark import SparkContext
 
 def Expectation(doc, beta, alpha, K):
     '''
@@ -103,42 +104,52 @@ def rand_init_beta(NumTerm, K):
     beta = [ [ random.random() + 1.0 / NumTerm for i in range(NumTerm) ] for j in range(K)]
     sum_beta = [sum(beta[i]) for i in range(K)]
     beta = [ [ beta[i][j]/sum_beta[i] for j in range(NumTerm) ] for i in range(K) ]
-    print beta
+    #print beta
     return beta
 
 if __name__=="__main__":
 
     NumTerm, K = setting.NUM_TERM, setting.K
     Alpha = setting.ALPHA
-    beta = rand_init_beta(NumTerm,  K)
 
     # local test code start
-    '''
-    for it in range(20):
-        e_res = []
-        i = 0
-        for line in open(sys.argv[1]):
-            #print "Doc: "+ str(i)
-            i = i + 1
-            e_res += Expectation(line, beta , Alpha, K)
-        e_res = sorted(e_res, key=lambda x:x[0])
-        e_res = reduce(e_res)
-        #print e_res
-        (beta, likelihood) = update_beta(e_res, K, NumTerm)
+    
+    if len(sys.argv) > 2 and sys.argv[2] == "local":
+        print "initialing beta ... "
+        beta = rand_init_beta(NumTerm,  K)
+        print "initialing beta success!  "
+        for it in range(20):
+            e_res = []
+            i = 0
+            for line in open(sys.argv[1]):
+                print "Doc: "+ str(i)
+                i = i + 1
+                e_res += Expectation(line, beta , Alpha, K)
+            e_res = sorted(e_res, key=lambda x:x[0])
+            e_res = reduce(e_res)
+            #print e_res
+            (beta, likelihood) = update_beta(e_res, K, NumTerm)
         print beta
+        sys.exit(0)
 
-    ''' 
+     
     # local test code end
     
     
     sc = SparkContext(appName="SparkLda")
-    text = sc.textFile(sys.argv[1])
+    text = sc.textFile(sys.argv[1]).repartition(200)
+    print "caching file ..."
     text.cache()
+    print "counting file ..."
     NumDoc = text.count()
     likelihood, likelihood_old = 0, 0
+    print "initialing beta ... "
+    beta = rand_init_beta(NumTerm,  K)
+    print "initialing beta success!  "
     
     # E_M iterate for beta
     for i in range(20):
+        print "starting iteration {0} ...".format(i)
         new_beta = text.flatMap(lambda line, beta=beta : Expectation(line, beta , Alpha, K)).reduceByKey(add)
         output = new_beta.collect()
         #print >> open('beta.'+str(i), 'w'), beta
