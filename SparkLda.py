@@ -1,5 +1,6 @@
 # lda training ... 
 
+import sys
 import math
 import setting
 from utils import *
@@ -8,7 +9,7 @@ if len(sys.argv) > 2 and sys.argv[2] != "local" or len(sys.argv) <= 2:
     from operator import add
     from pyspark import SparkContext
 
-def Expectation(doc, beta, alpha, K):
+def Expectation(doc, alpha, K):
     '''
      * doc : current doc
 
@@ -33,8 +34,10 @@ def Expectation(doc, beta, alpha, K):
 
     converged = 1
     likelihood_old, i = 0, 0
+    beta = beta_global.value
     while i < MAX_ITR and not converged < setting.E_CON_THRES:
         for n in range(N):
+            #phi[n] = [ math.exp(di_gamma[k]) * beta[k][word_ids[n]] for k in range(K) ]
             phi[n] = [ math.exp(di_gamma[k]) * beta[k][word_ids[n]] for k in range(K) ]
             phi_sum = sum(phi[n])
             phi[n] = [ phi[n][k] / phi_sum for k in range(K) ]
@@ -101,9 +104,10 @@ def reduce(arr):
     return res
 
 def rand_init_beta(NumTerm, K):
-    beta = [ [ random.random() + 1.0 / NumTerm for i in range(NumTerm) ] for j in range(K)]
-    sum_beta = [sum(beta[i]) for i in range(K)]
-    beta = [ [ beta[i][j]/sum_beta[i] for j in range(NumTerm) ] for i in range(K) ]
+    #beta = [ [ random.random() + 1.0 / NumTerm for i in range(NumTerm) ] for j in range(K)]
+    beta = [ [ 0.0 ] * NumTerm for j in range(K)]
+    #sum_beta = [sum(beta[i]) for i in range(K)]
+    #beta = [ [ beta[i][j]/sum_beta[i] for j in range(NumTerm) ] for i in range(K) ]
     #print beta
     return beta
 
@@ -145,12 +149,17 @@ if __name__=="__main__":
     likelihood, likelihood_old = 0, 0
     print "initialing beta ... "
     beta = rand_init_beta(NumTerm,  K)
+    
     print "initialing beta success!  "
     
     # E_M iterate for beta
     for i in range(20):
         print "starting iteration {0} ...".format(i)
-        new_beta = text.flatMap(lambda line, beta=beta : Expectation(line, beta , Alpha, K)).reduceByKey(add)
+        print sys.getsizeof(beta)
+        beta_global = sc.broadcast(beta)
+        print "broadcast success"
+        #new_beta = text.flatMap(lambda line, beta=beta : Expectation(line, beta , Alpha, K)).reduceByKey(add)
+        new_beta = text.flatMap(lambda line :  Expectation(line, Alpha, K) ).reduceByKey(add)
         output = new_beta.collect()
         #print >> open('beta.'+str(i), 'w'), beta
         (beta, likelihood) = update_beta(output, K, NumTerm)
