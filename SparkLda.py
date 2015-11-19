@@ -38,13 +38,13 @@ def Expectation(doc, alpha, K):
     while i < MAX_ITR and not converged < setting.E_CON_THRES:
         for n in range(N):
             #phi[n] = [ math.exp(di_gamma[k]) * beta[k][word_ids[n]] for k in range(K) ]
-            phi[n] = [ math.exp(di_gamma[k]) * beta[k][word_ids[n]] for k in range(K) ]
+            phi[n] = [ math.exp(di_gamma[k]) * beta[k * NumTerm + word_ids[n]] for k in range(K) ]
             phi_sum = sum(phi[n])
             phi[n] = [ phi[n][k] / phi_sum for k in range(K) ]
         for k in range(K):
             var_gamma[k] = alpha + sum([ word_counts[n] * phi[n][k] for n in range(N)])
             di_gamma[k] = digamma( var_gamma[k] )
-        likelihood = compute_likelihood(word_ids, word_counts, alpha, beta, phi, var_gamma, di_gamma, K)
+        likelihood = compute_likelihood(word_ids, word_counts, alpha, beta, phi, var_gamma, di_gamma, K, NumTerm)
         converged = abs( (likelihood_old - likelihood) / (likelihood_old + 1e-8) )
         #print "like_old: {0}, like_new: {1}, converged: {2}".format(likelihood_old, likelihood, converged)
         likelihood_old = likelihood
@@ -57,7 +57,7 @@ def Expectation(doc, alpha, K):
             res.append(('{0},{1}'.format(j, word_ids[i]), phi[i][j]))
     return res
 
-def compute_likelihood(word_ids, word_counts, alpha, beta, phi, var_gamma, di_gamma, K):
+def compute_likelihood(word_ids, word_counts, alpha, beta, phi, var_gamma, di_gamma, K, NumTerm):
     gamma_sum = sum(var_gamma)
     digamma_sum = digamma(gamma_sum)
     res = lgamma(alpha * K) - K * lgamma(alpha) -lgamma(gamma_sum)
@@ -66,7 +66,7 @@ def compute_likelihood(word_ids, word_counts, alpha, beta, phi, var_gamma, di_ga
         for n in range(len(word_ids)):
             if phi[n][k] > 0.0:
                 res += word_counts[n] * 1.0 * ( phi[n][k] * ( \
-                    (di_gamma[k] - digamma_sum) - math.log(phi[n][k]) + math.log(beta[k][word_ids[n]])) )
+                    (di_gamma[k] - digamma_sum) - math.log(phi[n][k]) + math.log(beta[k *NumTerm + word_ids[n]])) )
     return res
     
 def update_beta(M_res, K, NumTerm):
@@ -105,7 +105,7 @@ def reduce(arr):
 
 def rand_init_beta(NumTerm, K):
     #beta = [ [ random.random() + 1.0 / NumTerm for i in range(NumTerm) ] for j in range(K)]
-    beta = [ [ 0.0 ] * NumTerm for j in range(K)]
+    beta = [ 0.0 ] * (NumTerm * K)
     #sum_beta = [sum(beta[i]) for i in range(K)]
     #beta = [ [ beta[i][j]/sum_beta[i] for j in range(NumTerm) ] for i in range(K) ]
     #print beta
@@ -116,30 +116,6 @@ if __name__=="__main__":
     NumTerm, K = setting.NUM_TERM, setting.K
     Alpha = setting.ALPHA
 
-    # local test code start
-    
-    if len(sys.argv) > 2 and sys.argv[2] == "local":
-        print "initialing beta ... "
-        beta = rand_init_beta(NumTerm,  K)
-        print "initialing beta success!  "
-        for it in range(20):
-            e_res = []
-            i = 0
-            for line in open(sys.argv[1]):
-                print "Doc: "+ str(i)
-                i = i + 1
-                e_res += Expectation(line, beta , Alpha, K)
-            e_res = sorted(e_res, key=lambda x:x[0])
-            e_res = reduce(e_res)
-            #print e_res
-            (beta, likelihood) = update_beta(e_res, K, NumTerm)
-        print beta
-        sys.exit(0)
-
-     
-    # local test code end
-    
-    
     sc = SparkContext(appName="SparkLda")
     text = sc.textFile(sys.argv[1]).repartition(200)
     print "caching file ..."
@@ -160,7 +136,9 @@ if __name__=="__main__":
         print "broadcast success"
         #new_beta = text.flatMap(lambda line, beta=beta : Expectation(line, beta , Alpha, K)).reduceByKey(add)
         new_beta = text.flatMap(lambda line :  Expectation(line, Alpha, K) ).reduceByKey(add)
-        output = new_beta.collect()
+        #output = new_beta.collect()
+        output = new_beta.count()
+        print "output", output
         #print >> open('beta.'+str(i), 'w'), beta
         (beta, likelihood) = update_beta(output, K, NumTerm)
         #print beta
